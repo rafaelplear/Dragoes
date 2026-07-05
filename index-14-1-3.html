@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reinos do Dragão</title>
+
+<!-- Tailwind (via CDN, sem precisar de build) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- Ícones -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;900&family=Manrope:wght@400;500;600;700;800&display=swap');
+  :root{
+    --bg:#0F0D0A; --bg-glow: radial-gradient(1200px 600px at 50% -10%, rgba(200,155,60,.08), transparent 60%);
+    --panel:#1B1611; --panel2:#231C15; --panel3:#2A2118; --border:#3A2F22; --border-soft:#2A2219;
+    --ember:#B23A2E; --ember-soft:#7A2A22; --ember-glow: rgba(178,58,46,.35);
+    --gold:#C89B3C; --gold-dim:#8E6E2E; --teal:#3E6B54;
+    --text:#EDE6D6; --muted:#9C8F7A; --muted-dim:#6E6353;
+  }
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background-color:var(--bg); background-image:var(--bg-glow); color:var(--text);
+    font-family:'Manrope',sans-serif; min-height:100vh;
+  }
+  .font-display{ font-family:'Cinzel',serif; letter-spacing:.04em; }
+  .text-muted{ color:var(--muted); }
+  .rune-divider{ display:flex; align-items:center; gap:.6rem; color:var(--gold-dim); }
+  .rune-divider::before, .rune-divider::after{ content:""; flex:1; height:1px; background:linear-gradient(90deg, transparent, var(--border), transparent); }
+  .selo{
+    display:flex; align-items:center; justify-content:center; border-radius:9999px; flex-shrink:0; position:relative;
+    background:radial-gradient(circle at 35% 30%, var(--ember-soft), var(--panel2) 70%);
+    border:2px solid var(--gold); box-shadow:0 0 16px var(--ember-glow), inset 0 0 10px rgba(0,0,0,.45);
+  }
+  .selo::after{
+    content:""; position:absolute; inset:-6px; border-radius:9999px; border:1px solid rgba(200,155,60,.25); pointer-events:none;
+  }
+  .selo.dim{ border-color:var(--border); box-shadow:none; }
+  .selo.dim::after{ display:none; }
+  .dot{ width:8px; height:8px; border-radius:9999px; display:inline-block; margin-right:8px; background:#5A5148; }
+  .dot.on{ background:#4CAF6D; box-shadow:0 0 6px #4CAF6D; }
+  .input{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:.6rem;
+    padding:.6rem .85rem; font-size:.875rem; width:100%; transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .input:focus{ outline:none; border-color:var(--gold-dim); box-shadow:0 0 0 3px rgba(200,155,60,.12); }
+  .btn-ember{
+    background:linear-gradient(180deg, #C4453A, var(--ember)); color:#fff; font-weight:700; border-radius:.6rem;
+    padding:.65rem 1.1rem; letter-spacing:.01em; border:1px solid rgba(0,0,0,.15); box-shadow:0 2px 0 rgba(0,0,0,.25), 0 4px 14px rgba(178,58,46,.25);
+    transition:transform .12s ease, box-shadow .12s ease; cursor:pointer;
+  }
+  .btn-ember:hover{ transform:translateY(-1px); box-shadow:0 3px 0 rgba(0,0,0,.25), 0 8px 18px rgba(178,58,46,.35); }
+  .btn-ember:active{ transform:translateY(0); }
+  .btn-ghost{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:.6rem;
+    padding:.55rem .95rem; font-size:.8rem; font-weight:600; cursor:pointer; transition:border-color .15s ease, color .15s ease;
+  }
+  .btn-ghost:hover{ border-color:var(--gold-dim); color:var(--gold); }
+  .card{
+    background:linear-gradient(180deg, var(--panel), var(--panel2)); border:1px solid var(--border-soft);
+    border-radius:.9rem; box-shadow:0 1px 0 rgba(255,255,255,.02) inset, 0 8px 20px rgba(0,0,0,.18);
+    transition:border-color .18s ease, transform .18s ease;
+  }
+  .card-link:hover{ border-color:var(--gold-dim); transform:translateY(-2px); }
+  .pill{ border-radius:9999px; font-weight:600; }
+  .stat-num{ font-family:'Cinzel',serif; font-weight:700; }
+  ::-webkit-scrollbar{ height:6px; width:6px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:4px; }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 px-5 py-3 rounded-lg z-[999] text-sm font-semibold hidden" style="background:var(--gold); color:#1A1410; box-shadow:0 10px 30px rgba(0,0,0,.4); border:1px solid rgba(0,0,0,.15);"></div>
+
+<div id="nav" class="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-8 py-3" style="background:#0D0B08EE; backdrop-filter:blur(8px); border-bottom:1px solid var(--border-soft);"></div>
+
+<div id="app" class="pb-16"></div>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO — troque antes de publicar
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAWLtl84Umajh8UAOnq6sNW46POZ_TCSvM",
+  authDomain: "dragoes-1c33b.firebaseapp.com",
+  projectId: "dragoes-1c33b",
+  storageBucket: "dragoes-1c33b.firebasestorage.app",
+  messagingSenderId: "4417567938",
+  appId: "1:4417567938:web:2c077e2965b5bafecbcf5b",
+  measurementId: "G-1FRDYCZ02H"
+};
+// A senha do ADM NÃO fica mais aqui no código — ela é lida direto do Firestore
+// (coleção "config", documento "admin", campo "senha"). Veja as instruções que
+// te mandei em separado para cadastrar essa senha no console do Firebase.
+const WHATSAPP_NUMBER = "5516997161570"; // Número do ADM (DDI+DDD+número)
+const SERVIDORES = ["Reino dos Dragões", "ARK 2.0"];
+
+// Este catálogo abaixo é usado só UMA VEZ, para popular o Firestore na primeira
+// vez que o site rodar. Depois disso, categorias e itens são gerenciados pelo
+// próprio Painel ADM (aba "Loja") e ficam salvos no Firestore.
+const SEED_CATALOGO = [
+  { categoria: "Destino Especial", itens: [
+    { id: "de1", nome: "Teleporte para base", preco: 15 },
+    { id: "de2", nome: "Teleporte para caverna de elementos", preco: 25 },
+  ]},
+  { categoria: "Criação Especial", itens: [
+    { id: "ce1", nome: "Dino customizado (cor + stats)", preco: 40 },
+    { id: "ce2", nome: "Skin exclusiva de estrutura", preco: 20 },
+  ]},
+  { categoria: "Base Pronta", itens: [
+    { id: "bp1", nome: "Base pequena (metal)", preco: 60 },
+    { id: "bp2", nome: "Base grande (tek)", preco: 150 },
+  ]},
+  { categoria: "Recursos", itens: [
+    { id: "rc1", nome: "1000x Metal", preco: 10 },
+    { id: "rc2", nome: "500x Cristal", preco: 12 },
+    { id: "rc3", nome: "Element x50", preco: 35 },
+  ]},
+  { categoria: "Kits", itens: [
+    { id: "kt1", nome: "Kit Iniciante", preco: 20 },
+    { id: "kt2", nome: "Kit Tribo Completo", preco: 90 },
+  ]},
+  { categoria: "Ambos (Combo)", itens: [
+    { id: "am1", nome: "Combo Base + Recursos", preco: 180 },
+  ]},
+];
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* ============================================================
+   HELPERS FIRESTORE
+   ============================================================ */
+const sanitize = (s) => (s || "").trim().toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "sem_nome";
+
+async function fsGet(col, id) {
+  try { const d = await db.collection(col).doc(id).get(); return d.exists ? d.data() : null; }
+  catch (e) { console.error(e); return null; }
+}
+async function fsSet(col, id, data) {
+  try { await db.collection(col).doc(id).set(data); return true; }
+  catch (e) { console.error(e); return false; }
+}
+async function fsDelete(col, id) {
+  try { await db.collection(col).doc(id).delete(); } catch (e) {}
+}
+async function fsAdd(col, data) {
+  try { const ref = await db.collection(col).add(data); return ref.id; }
+  catch (e) { console.error(e); return null; }
+}
+async function fsList(col) {
+  try { const snap = await db.collection(col).get(); return snap.docs.map((d) => ({ id: d.id, ...d.data() })); }
+  catch (e) { console.error(e); return []; }
+}
+async function checkAdminPassword(pass) {
+  const doc = await fsGet("config", "admin");
+  if (!doc || !doc.senha) return false;
+  return String(doc.senha) === String(pass);
+}
+
+/* ============================================================
+   CATÁLOGO DA LOJA (categorias + itens vivem no Firestore)
+   ============================================================ */
+async function getCategorias() {
+  const cats = await fsList("categorias");
+  return cats.sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+}
+async function getItens() {
+  return fsList("itens");
+}
+async function seedCatalogoSeNecessario() {
+  const categorias = await fsList("categorias");
+  if (categorias.length > 0) return; // já existe catálogo salvo, não sobrescreve
+  let ordem = 0;
+  for (const cat of SEED_CATALOGO) {
+    await fsSet("categorias", sanitize(cat.categoria), { nome: cat.categoria, ordem: ordem++ });
+    for (const item of cat.itens) {
+      await fsSet("itens", item.id, { nome: item.nome, preco: item.preco, categoria: cat.categoria });
+    }
+  }
+}
+
+/* ============================================================
+   CUPONS DE DESCONTO
+   ============================================================ */
+function calcularDesconto(subtotal, cupom) {
+  if (!cupom || subtotal <= 0) return 0;
+  const bruto = cupom.tipo === "percentual" ? subtotal * (Number(cupom.valor) / 100) : Number(cupom.valor);
+  return Math.min(Math.max(bruto, 0), subtotal);
+}
+function formatoDesconto(cupom) {
+  return cupom.tipo === "percentual" ? `${cupom.valor}%` : `R$ ${Number(cupom.valor).toFixed(2)}`;
+}
+async function validarCupom(codigoDigitado) {
+  const id = sanitize(codigoDigitado);
+  const cupom = await fsGet("cupons", id);
+  if (!cupom) return { ok: false, erro: "Cupom não encontrado." };
+  if (cupom.ativo === false) return { ok: false, erro: "Esse cupom não está mais ativo." };
+  if (cupom.validade && Date.now() > cupom.validade) return { ok: false, erro: "Esse cupom expirou." };
+  if (cupom.limiteUsos && (cupom.usos || 0) >= cupom.limiteUsos) return { ok: false, erro: "Esse cupom atingiu o limite de usos." };
+  return { ok: true, cupom: { id, ...cupom } };
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  view: "home",
+  nick: "",
+  isAdmin: false,
+  cart: {},          // id -> {...item, qtd}
+  cupomAplicado: null, // { id, codigo, tipo, valor }
+  servidor: SERVIDORES[0],
+  categoria: null,
+  cartOpen: false,
+  adminTab: "pedidos",
+};
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => el.classList.add("hidden"), 3000);
+}
+
+function icons() { if (window.lucide) lucide.createIcons(); }
+
+/* ============================================================
+   NAV
+   ============================================================ */
+function renderNav() {
+  const items = [["home","Início"],["loja","Loja"],["eventos","Eventos"],["ranking","Ranking"],["cadastro","Cadastro"]];
+  document.getElementById("nav").innerHTML = `
+    <button data-action="nav" data-view="home" class="flex items-center gap-2.5 font-display text-sm sm:text-base">
+      <div class="selo" style="width:32px;height:32px;font-size:15px;">🐉</div>
+      <span class="hidden sm:inline" style="color:var(--gold); letter-spacing:.08em;">REINOS DO DRAGÃO</span>
+    </button>
+    <div class="flex items-center gap-0.5 sm:gap-1 text-xs sm:text-sm">
+      ${items.map(([key,label]) => `
+        <button data-action="nav" data-view="${key}" class="px-2 sm:px-3 py-1.5 relative font-medium"
+          style="color:${state.view===key?"var(--gold)":"var(--muted)"};">
+          ${label}
+          ${state.view===key ? `<span style="position:absolute; left:8px; right:8px; bottom:-1px; height:2px; background:var(--ember); border-radius:2px;"></span>` : ""}
+        </button>`).join("")}
+      <button data-action="nav" data-view="admin" class="ml-1 p-2 rounded-md" style="color:${state.isAdmin?"#4CAF6D":"var(--muted)"}; background:${state.view==="admin"?"var(--panel2)":"transparent"};" title="Área ADM">
+        <i data-lucide="${state.isAdmin?"shield-check":"lock"}" style="width:16px;height:16px;"></i>
+      </button>
+    </div>
+  `;
+}
+
+/* ============================================================
+   HOME
+   ============================================================ */
+async function renderHome() {
+  const [tribos, cadastros, pedidos] = await Promise.all([fsList("tribos"), fsList("cadastros"), fsList("pedidos")]);
+  const onlineAgora = cadastros.filter((c) => c.lastSeen && Date.now() - c.lastSeen < 5*60*1000).length;
+  const pendentes = pedidos.filter((p) => p.status !== "entregue").length;
+  const stats = [
+    ["users", cadastros.length, "Jogadores"],
+    ["flag", tribos.length, "Tribos"],
+    ["radio", onlineAgora, "Online agora"],
+    ["package", pendentes, "Pedidos em aberto"],
+  ];
+
+  const sections = [
+    ["loja","shopping-cart","Loja","Bases prontas, recursos, kits e criações sob medida para sua tribo.","var(--ember)"],
+    ["eventos","swords","Eventos","Palpite no placar do reino e acompanhe as disputas ao vivo.","var(--gold)"],
+    ["ranking","flag","Ranking","Veja quais tribos lideram a disputa por território e pontos.","var(--teal)"],
+    ["cadastro","users","Cadastro","Registre seu nick, sua tribo e marque presença no servidor.","var(--gold)"],
+  ];
+
+  document.getElementById("app").innerHTML = `
+  <div class="px-6 py-14 sm:py-20 text-center max-w-4xl mx-auto">
+    <div class="selo mx-auto" style="width:84px;height:84px;"><span style="font-size:36px;">🐉</span></div>
+    <h1 class="font-display mt-6 text-4xl sm:text-6xl" style="color:var(--gold); text-shadow:0 0 30px rgba(200,155,60,.18);">REINOS DO DRAGÃO</h1>
+    <p class="mt-3 max-w-lg mx-auto" style="color:var(--muted);">Portal oficial da comunidade. Abasteça sua tribo, dispute eventos, suba no ranking e marque presença no servidor.</p>
+
+    <div class="rune-divider mt-10 mb-6 text-xs uppercase" style="letter-spacing:.15em;">Estado do reino</div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-12">
+      ${stats.map(([icon, val, label]) => `
+        <div class="card p-4">
+          <i data-lucide="${icon}" style="width:16px;height:16px; color:var(--gold-dim);"></i>
+          <div class="stat-num text-2xl mt-2" style="color:var(--text);">${val}</div>
+          <div class="text-xs mt-0.5" style="color:var(--muted);">${label}</div>
+        </div>`).join("")}
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4 text-left">
+      ${sections.map(([view, icon, title, desc, color]) => `
+        <button data-action="nav" data-view="${view}" class="card card-link p-6">
+          <div class="selo" style="width:44px;height:44px;"><i data-lucide="${icon}" style="color:${color}; width:19px; height:19px;"></i></div>
+          <div class="font-display mt-4 text-lg" style="color:var(--text);">${title}</div>
+          <div class="text-xs mt-1.5 leading-relaxed" style="color:var(--muted);">${desc}</div>
+        </button>`).join("")}
+    </div>
+  </div>`;
+  icons();
+}
+
+/* ============================================================
+   LOJA
+   ============================================================ */
+async function renderLoja() {
+  const [categorias, itens, avisos] = await Promise.all([
+    getCategorias(), getItens(), fsGet("avisos", sanitize(state.servidor)).then((d) => d?.lista || []),
+  ]);
+  window.__itensCache = itens;
+
+  if (!state.categoria || !categorias.find((c) => c.nome === state.categoria)) {
+    state.categoria = categorias[0]?.nome || null;
+  }
+
+  const cartItems = Object.values(state.cart);
+  const subtotal = cartItems.reduce((s, i) => s + i.preco * i.qtd, 0);
+  const desconto = calcularDesconto(subtotal, state.cupomAplicado);
+  const total = subtotal - desconto;
+  const qtdTotal = cartItems.reduce((s, i) => s + i.qtd, 0);
+
+  document.getElementById("app").innerHTML = `
+  <div class="px-4 sm:px-8 py-8 max-w-6xl mx-auto">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="selo" style="width:40px;height:40px;"><i data-lucide="shopping-cart" style="color:var(--ember); width:18px; height:18px;"></i></div>
+      <h2 class="font-display text-2xl" style="color:var(--gold);">Loja</h2>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-4">
+      <select id="servidorSelect" class="input" style="width:auto;">
+        ${SERVIDORES.map((s) => `<option value="${s}" ${s===state.servidor?"selected":""}>${s}</option>`).join("")}
+      </select>
+      <input id="nickInput" class="input flex-1" style="min-width:160px;" placeholder="Seu nick no jogo" value="${state.nick}" />
+    </div>
+    ${avisos.length ? `
+    <div class="mb-5 p-3 rounded-lg text-sm flex items-start gap-2" style="background:#2A1F14; border:1px solid rgba(200,155,60,.35); color:var(--gold);">
+      <i data-lucide="megaphone" style="width:16px;height:16px; margin-top:2px;"></i>
+      <div>${avisos.map((a) => `<div>${a.texto}</div>`).join("")}</div>
+    </div>` : ""}
+    ${categorias.length === 0 ? `
+      <div class="card p-6 text-sm text-center" style="color:var(--muted);">A loja ainda não tem categorias ou itens cadastrados. Peça para o ADM configurar em Painel ADM → Loja.</div>
+    ` : `
+    <div class="flex gap-2 mb-5 overflow-x-auto pb-1">
+      ${categorias.map((c) => `
+        <button data-action="cat" data-cat="${c.nome}" class="text-xs px-3 py-2 rounded-full whitespace-nowrap shrink-0"
+          style="background:${state.categoria===c.nome?"var(--ember)":"var(--panel2)"}; color:${state.categoria===c.nome?"#fff":"var(--muted)"}; border:1px solid ${state.categoria===c.nome?"var(--ember)":"var(--border)"};">
+          ${c.nome}
+        </button>`).join("")}
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-28">
+      ${itens.filter((i) => i.categoria === state.categoria).length === 0 ? `<div class="text-sm col-span-full" style="color:var(--muted);">Nenhum item nessa categoria ainda.</div>` : ""}
+      ${itens.filter((i) => i.categoria === state.categoria).map((item) => {
+        const inCart = state.cart[item.id];
+        return `
+        <div class="card p-4 flex flex-col justify-between">
+          <div>
+            ${item.imagem ? `<img src="${item.imagem}" class="w-full rounded-lg object-cover mb-3" style="height:120px;" onerror="this.style.display='none'" />` : ""}
+            <div class="font-semibold text-sm" style="color:var(--text);">${item.nome}</div>
+            ${item.descricao ? `<div class="text-xs mt-1" style="color:var(--muted);">${item.descricao}</div>` : ""}
+            <div class="text-xs mt-1" style="color:var(--gold);">R$ ${item.preco.toFixed(2)}</div>
+          </div>
+          <div class="flex items-center justify-between mt-3">
+            ${inCart ? `
+              <div class="flex items-center gap-2">
+                <button data-action="dec" data-id="${item.id}" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="minus" style="width:14px;height:14px;"></i></button>
+                <span class="text-sm w-5 text-center">${inCart.qtd}</span>
+                <button data-action="inc" data-id="${item.id}" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="plus" style="width:14px;height:14px;"></i></button>
+              </div>` : `
+              <button data-action="add" data-id="${item.id}" class="text-xs px-3 py-1.5 rounded-md" style="background:var(--ember-soft); color:#fff;">Adicionar</button>`}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+    `}
+
+    ${qtdTotal > 0 && !state.cartOpen ? `
+      <button data-action="opencart" class="fixed bottom-5 right-5 px-4 py-3 rounded-full shadow-xl flex items-center gap-2 z-40 font-semibold" style="background:var(--gold); color:#1A1410;">
+        <i data-lucide="shopping-cart" style="width:16px;height:16px;"></i> ${qtdTotal} · R$ ${total.toFixed(2)}
+      </button>` : ""}
+
+    ${state.cartOpen ? `
+      <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style="background:#000000AA;">
+        <div class="w-full sm:w-[420px] max-h-[80vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5 card">
+          <div class="flex items-center justify-between mb-3">
+            <div class="font-display text-lg" style="color:var(--gold);">Seu carrinho</div>
+            <button data-action="closecart"><i data-lucide="x" style="width:20px;height:20px; color:var(--muted);"></i></button>
+          </div>
+          ${cartItems.map((i) => `
+            <div class="flex items-center justify-between py-2" style="border-bottom:1px solid var(--border);">
+              <div>
+                <div class="text-sm">${i.nome}</div>
+                <div class="text-xs" style="color:var(--muted);">${i.qtd} x R$ ${i.preco.toFixed(2)}</div>
+              </div>
+              <button data-action="rm" data-id="${i.id}"><i data-lucide="trash-2" style="width:16px;height:16px; color:var(--ember);"></i></button>
+            </div>`).join("")}
+
+          <div class="mt-4">
+            ${state.cupomAplicado ? `
+              <div class="flex items-center justify-between px-3 py-2.5 rounded-md" style="background:rgba(62,107,84,.18); border:1px solid var(--teal);">
+                <div class="flex items-center gap-2 text-sm">
+                  <i data-lucide="percent" style="width:15px;height:15px; color:var(--teal);"></i>
+                  <span style="color:var(--text);">Cupom <strong>${state.cupomAplicado.codigo}</strong></span>
+                  <span class="text-xs" style="color:var(--muted);">(${formatoDesconto(state.cupomAplicado)} off)</span>
+                </div>
+                <button data-action="cupom-remover"><i data-lucide="x" style="width:15px;height:15px; color:var(--muted);"></i></button>
+              </div>
+            ` : `
+              <div class="flex gap-2">
+                <input id="cupomInput" class="input flex-1" placeholder="Código do cupom" style="text-transform:uppercase;" />
+                <button data-action="cupom-aplicar" class="btn-ghost">Aplicar</button>
+              </div>
+            `}
+          </div>
+
+          <div class="mt-4 pt-3 space-y-1.5" style="border-top:1px solid var(--border);">
+            <div class="flex justify-between text-sm" style="color:var(--muted);"><span>Subtotal</span><span>R$ ${subtotal.toFixed(2)}</span></div>
+            ${desconto > 0 ? `<div class="flex justify-between text-sm" style="color:var(--teal);"><span>Desconto</span><span>− R$ ${desconto.toFixed(2)}</span></div>` : ""}
+            <div class="flex justify-between font-semibold text-lg mt-1" style="color:var(--gold);"><span>Total</span><span>R$ ${total.toFixed(2)}</span></div>
+          </div>
+
+          <div class="mt-4">
+            <label class="text-xs" style="color:var(--muted);">Seu nick no jogo</label>
+            <input id="nickInputCart" class="input mt-1" placeholder="Digite seu nick" value="${state.nick||""}" />
+          </div>
+
+          <button data-action="finalizar" class="btn-ember w-full mt-4">Finalizar pedido no WhatsApp</button>
+        </div>
+      </div>` : ""}
+  </div>`;
+  icons();
+}
+
+/* ============================================================
+   EVENTOS
+   ============================================================ */
+async function renderEventos() {
+  const resultado = await fsGet("config", "resultado");
+  const palpites = (await fsList("palpites")).sort((a, b) => b.timestamp - a.timestamp);
+
+  document.getElementById("app").innerHTML = `
+  <div class="px-4 sm:px-8 py-8 max-w-3xl mx-auto">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="selo" style="width:40px;height:40px;"><i data-lucide="trophy" style="color:var(--gold); width:18px; height:18px;"></i></div>
+      <h2 class="font-display text-2xl" style="color:var(--gold);">Placar: Noruega x Brasil</h2>
+    </div>
+    ${resultado ? `
+      <div class="mb-6 p-4 rounded-lg text-center font-display text-2xl" style="background:var(--panel2); border:1px solid var(--gold); color:var(--gold);">
+        Resultado oficial: Noruega ${resultado.noruega} x ${resultado.brasil} Brasil
+      </div>` : ""}
+    <div class="card p-5 mb-6">
+      <input id="nickInputEv" class="input mb-3" placeholder="Seu nick no jogo" value="${state.nick}" />
+      <div class="flex items-center gap-3">
+        <div class="flex-1"><label class="text-xs" style="color:var(--muted);">Noruega</label>
+          <input id="golsNoruega" type="number" min="0" class="input mt-1" /></div>
+        <span class="font-display" style="color:var(--muted);">x</span>
+        <div class="flex-1"><label class="text-xs" style="color:var(--muted);">Brasil</label>
+          <input id="golsBrasil" type="number" min="0" class="input mt-1" /></div>
+      </div>
+      <button data-action="palpite-enviar" class="btn-ember w-full mt-4">Salvar palpite</button>
+    </div>
+    <div class="text-xs uppercase tracking-wide mb-2" style="color:var(--muted);">Palpites da galera</div>
+    <div class="space-y-1">
+      ${palpites.length === 0 ? `<div class="text-sm" style="color:var(--muted);">Ninguém palpitou ainda.</div>` : ""}
+      ${palpites.map((p) => {
+        const acertou = resultado && p.noruega === resultado.noruega && p.brasil === resultado.brasil;
+        return `<div class="flex items-center justify-between px-3 py-2 rounded-md" style="background:var(--panel2);">
+          <span class="text-sm">${p.nick}</span>
+          <span class="text-sm flex items-center gap-2" style="color:${acertou?"#4CAF6D":"var(--muted)"};">${p.noruega} x ${p.brasil} ${acertou ? `<i data-lucide="check" style="width:14px;height:14px;"></i>` : ""}</span>
+        </div>`;
+      }).join("")}
+    </div>
+  </div>`;
+  icons();
+}
+
+/* ============================================================
+   CADASTRO
+   ============================================================ */
+async function renderCadastro() {
+  let existente = null;
+  if (state.nick) existente = await fsGet("cadastros", sanitize(state.nick));
+  const online = existente?.lastSeen && Date.now() - existente.lastSeen < 5*60*1000;
+
+  document.getElementById("app").innerHTML = `
+  <div class="px-4 sm:px-8 py-8 max-w-md mx-auto">
+    <div class="flex items-center gap-3 mb-5">
+      <div class="selo" style="width:40px;height:40px;"><i data-lucide="users" style="color:var(--teal); width:18px; height:18px;"></i></div>
+      <h2 class="font-display text-2xl" style="color:var(--gold);">Cadastro de jogador</h2>
+    </div>
+    <div class="space-y-3">
+      <div><label class="text-xs" style="color:var(--muted);">Nome</label><input id="cNome" class="input mt-1" value="${existente?.nome||""}" /></div>
+      <div><label class="text-xs" style="color:var(--muted);">Telefone</label><input id="cTelefone" class="input mt-1" placeholder="(00) 00000-0000" value="${existente?.telefone||""}" /></div>
+      <div><label class="text-xs" style="color:var(--muted);">Nick no jogo</label><input id="cNick" class="input mt-1" value="${state.nick||""}" /></div>
+      <div><label class="text-xs" style="color:var(--muted);">Tribo</label><input id="cTribo" class="input mt-1" value="${existente?.tribo||""}" /></div>
+      <div><label class="text-xs" style="color:var(--muted);">Cargo na tribo</label>
+        <select id="cCargo" class="input mt-1">
+          <option ${existente?.cargo==="Membro"||!existente?"selected":""}>Membro</option>
+          <option ${existente?.cargo==="Líder"?"selected":""}>Líder</option>
+        </select></div>
+      <div><label class="text-xs" style="color:var(--muted);">Servidor</label>
+        <select id="cServidor" class="input mt-1">
+          ${SERVIDORES.map((s) => `<option ${existente?.servidor===s?"selected":""}>${s}</option>`).join("")}
+        </select></div>
+      <button data-action="cadastro-finalizar" class="btn-ember w-full mt-2 flex items-center justify-center gap-2">
+        <i data-lucide="message-circle" style="width:16px;height:16px;"></i> Finalizar cadastro no WhatsApp
+      </button>
+      <div class="text-xs text-center mt-1" style="color:var(--muted);">Ao finalizar, seu cadastro é salvo e você é levado ao WhatsApp do ADM para receber seu kit e o link do grupo.</div>
+      ${existente ? `
+        <button data-action="marcar-online" class="w-full flex items-center justify-center" style="background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:.5rem; padding:.6rem 1rem; font-weight:600;">
+          <span class="dot ${online?"on":""}"></span> ${online ? "Você está online" : "Marcar que estou online"}
+        </button>` : ""}
+    </div>
+  </div>`;
+  icons();
+}
+
+/* ============================================================
+   RANKING (público)
+   ============================================================ */
+async function renderRanking() {
+  const tribos = (await fsList("tribos")).sort((a, b) => (b.pontos||0) - (a.pontos||0));
+  document.getElementById("app").innerHTML = `
+  <div class="px-4 sm:px-8 py-8 max-w-2xl mx-auto">
+    <div class="flex items-center gap-3 mb-5">
+      <div class="selo" style="width:40px;height:40px;"><i data-lucide="flag" style="color:var(--gold); width:18px; height:18px;"></i></div>
+      <h2 class="font-display text-2xl" style="color:var(--gold);">Ranking das Tribos</h2>
+    </div>
+    ${tribos.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhuma tribo cadastrada ainda.</div>` : ""}
+    <div class="space-y-2">
+      ${tribos.map((t, i) => `
+        <div class="card p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="font-display text-lg w-8 text-center" style="color:${i===0?"var(--gold)":"var(--muted)"};">${i+1}º</div>
+            <div>
+              <div class="font-semibold text-sm">${t.nome}</div>
+              <div class="text-xs" style="color:var(--muted);">${(t.membros||[]).length} membro(s)</div>
+            </div>
+          </div>
+          <div class="font-display text-xl" style="color:var(--gold);">${t.pontos||0} pts</div>
+        </div>`).join("")}
+    </div>
+  </div>`;
+  icons();
+}
+
+/* ============================================================
+   ADMIN
+   ============================================================ */
+function renderAdminLogin() {
+  document.getElementById("app").innerHTML = `
+  <div class="min-h-[70vh] flex items-center justify-center px-4">
+    <div class="card p-7 w-full max-w-xs">
+      <div class="flex justify-center mb-4"><div class="selo" style="width:52px;height:52px;"><i data-lucide="shield" style="color:var(--gold); width:22px; height:22px;"></i></div></div>
+      <div class="font-display text-center text-lg mb-1" style="color:var(--gold);">Área ADM</div>
+      <div class="text-xs text-center mb-5" style="color:var(--muted);">Acesso restrito ao mestre do reino</div>
+      <input id="adminPass" type="password" class="input mb-3" placeholder="Senha" autocomplete="current-password" />
+      <div id="adminErro" class="text-xs mb-3 hidden" style="color:var(--ember);">Senha incorreta.</div>
+      <button data-action="admin-login" class="btn-ember w-full">Entrar</button>
+    </div>
+  </div>`;
+  icons();
+}
+
+async function renderAdmin() {
+  const tabs = [["loja","Loja","store"],["cupons","Cupons","percent"],["pedidos","Pedidos","clipboard-list"],["avisos","Avisos","megaphone"],["pontuacao","Pontuação","trophy"],["cadastros","Cadastros","users"],["palpites","Palpites","trophy"],["tribos","Tribos","flag"]];
+  let body = "";
+  if (state.adminTab === "loja") body = await tplLoja();
+  if (state.adminTab === "cupons") body = await tplCupons();
+  if (state.adminTab === "pedidos") body = await tplPedidos();
+  if (state.adminTab === "avisos") body = await tplAvisos();
+  if (state.adminTab === "pontuacao") body = await tplPontuacao();
+  if (state.adminTab === "cadastros") body = await tplCadastros();
+  if (state.adminTab === "palpites") body = await tplPalpites();
+  if (state.adminTab === "tribos") body = await tplTribos();
+
+  document.getElementById("app").innerHTML = `
+  <div class="px-4 sm:px-8 py-8 max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-3">
+        <div class="selo" style="width:40px;height:40px;"><i data-lucide="shield" style="color:var(--gold); width:18px; height:18px;"></i></div>
+        <h2 class="font-display text-2xl" style="color:var(--gold);">Painel ADM</h2>
+      </div>
+      <button data-action="admin-logout" class="btn-ghost">Sair</button>
+    </div>
+    <div class="flex gap-2 mb-6 overflow-x-auto pb-1">
+      ${tabs.map(([key,label,icon]) => `
+        <button data-action="admin-tab" data-tab="${key}" class="text-xs px-3 py-2 rounded-full whitespace-nowrap shrink-0 flex items-center gap-1.5"
+          style="background:${state.adminTab===key?"var(--ember)":"var(--panel2)"}; color:${state.adminTab===key?"#fff":"var(--muted)"}; border:1px solid ${state.adminTab===key?"var(--ember)":"var(--border)"};">
+          <i data-lucide="${icon}" style="width:13px;height:13px;"></i> ${label}
+        </button>`).join("")}
+    </div>
+    <div id="adminBody">${body}</div>
+  </div>`;
+  icons();
+}
+
+async function tplLoja() {
+  const categorias = await getCategorias();
+  const itens = await getItens();
+
+  return `
+  <div class="card p-4 mb-5">
+    <div class="text-xs mb-2" style="color:var(--muted);">Nova categoria</div>
+    <div class="flex gap-2">
+      <input id="catNovaNome" class="input flex-1" placeholder="Ex: Armas, Montarias..." />
+      <button data-action="cat-criar" class="btn-ember">Criar</button>
+    </div>
+  </div>
+
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${categorias.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhuma categoria cadastrada ainda. Crie uma acima para começar a montar a loja.</div>` : ""}
+
+  <div class="space-y-4">
+    ${categorias.map((c) => {
+      const cid = c.id;
+      const itensCat = itens.filter((i) => i.categoria === c.nome);
+      return `
+      <div class="card p-4">
+        <div class="flex items-center gap-2 mb-3 flex-wrap">
+          <input id="catNome-${cid}" class="input flex-1" style="min-width:140px;" value="${c.nome}" />
+          <button data-action="cat-renomear" data-id="${cid}" data-nome="${c.nome}" class="btn-ghost">Salvar nome</button>
+          <button data-action="cat-excluir" data-id="${cid}" data-nome="${c.nome}"><i data-lucide="trash-2" style="width:16px;height:16px; color:var(--ember);"></i></button>
+        </div>
+
+        <div class="space-y-2 mb-3">
+          ${itensCat.length===0 ? `<div class="text-xs" style="color:var(--muted);">Nenhum item nessa categoria.</div>` : ""}
+          ${itensCat.map((it) => `
+            <div class="p-3 rounded-md" style="background:var(--panel2);">
+              <div class="flex items-center gap-2 flex-wrap mb-2">
+                ${it.imagem ? `<img src="${it.imagem}" class="rounded-md object-cover" style="width:44px;height:44px;" onerror="this.style.display='none'" />` : ""}
+                <input id="itNome-${it.id}" class="input flex-1" style="min-width:130px;" value="${it.nome}" placeholder="Nome do item" />
+                <input id="itPreco-${it.id}" type="number" step="0.01" min="0" class="input" style="width:90px;" value="${it.preco}" placeholder="Preço" />
+                <select id="itCat-${it.id}" class="input" style="width:auto;">
+                  ${categorias.map((cc) => `<option value="${cc.nome}" ${cc.nome===it.categoria?"selected":""}>${cc.nome}</option>`).join("")}
+                </select>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap mb-2">
+                <input id="itImg-${it.id}" class="input flex-1" style="min-width:160px;" value="${it.imagem||""}" placeholder="URL da foto (opcional)" />
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <textarea id="itDesc-${it.id}" class="input flex-1" style="min-width:160px; min-height:38px;" placeholder="Descrição (opcional)">${it.descricao||""}</textarea>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap mt-2">
+                <button data-action="item-salvar" data-id="${it.id}" class="btn-ghost">Salvar</button>
+                <button data-action="item-excluir" data-id="${it.id}"><i data-lucide="trash-2" style="width:15px;height:15px; color:var(--ember);"></i></button>
+              </div>
+            </div>`).join("")}
+        </div>
+
+        <div class="p-3 rounded-md" style="background:var(--panel2); border:1px dashed var(--border);">
+          <div class="text-xs mb-2" style="color:var(--muted);">Novo item nesta categoria</div>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <input id="itNovoNome-${cid}" class="input flex-1" style="min-width:130px;" placeholder="Nome do item" />
+            <input id="itNovoPreco-${cid}" type="number" step="0.01" min="0" class="input" style="width:90px;" placeholder="Preço" />
+          </div>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <input id="itNovoImg-${cid}" class="input flex-1" style="min-width:160px;" placeholder="URL da foto (opcional)" />
+          </div>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <textarea id="itNovoDesc-${cid}" class="input flex-1" style="min-width:160px; min-height:38px;" placeholder="Descrição (opcional)"></textarea>
+          </div>
+          <button data-action="item-criar" data-categoria="${c.nome}" data-cid="${cid}" class="btn-ember">Adicionar item</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+async function tplCupons() {
+  const cupons = (await fsList("cupons")).sort((a, b) => (b.criadoEm||0) - (a.criadoEm||0));
+
+  return `
+  <div class="card p-4 mb-5">
+    <div class="text-xs mb-3" style="color:var(--muted);">Novo cupom</div>
+    <div class="grid sm:grid-cols-2 gap-2 mb-2">
+      <input id="cupNovoCodigo" class="input" placeholder="Código (ex: BEMVINDO10)" style="text-transform:uppercase;" />
+      <select id="cupNovoTipo" class="input">
+        <option value="percentual">Percentual (%)</option>
+        <option value="fixo">Valor fixo (R$)</option>
+      </select>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-2 mb-2">
+      <input id="cupNovoValor" type="number" step="0.01" min="0" class="input" placeholder="Valor do desconto" />
+      <input id="cupNovoLimite" type="number" min="1" class="input" placeholder="Limite de usos (opcional)" />
+    </div>
+    <div class="mb-3">
+      <label class="text-xs" style="color:var(--muted);">Validade (opcional)</label>
+      <input id="cupNovoValidade" type="date" class="input mt-1" />
+    </div>
+    <button data-action="cupom-criar" class="btn-ember w-full">Criar cupom</button>
+  </div>
+
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${cupons.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhum cupom cadastrado ainda.</div>` : ""}
+
+  <div class="space-y-2">
+    ${cupons.map((c) => {
+      const expirado = c.validade && Date.now() > c.validade;
+      const esgotado = c.limiteUsos && (c.usos||0) >= c.limiteUsos;
+      const ativo = c.ativo !== false && !expirado && !esgotado;
+      let statusLabel = "Ativo", statusColor = "#4CAF6D", statusBg = "#1F3A28";
+      if (c.ativo === false) { statusLabel = "Desativado"; statusColor = "var(--muted)"; statusBg = "var(--panel2)"; }
+      else if (expirado) { statusLabel = "Expirado"; statusColor = "var(--ember)"; statusBg = "#3A1F1F"; }
+      else if (esgotado) { statusLabel = "Esgotado"; statusColor = "var(--gold)"; statusBg = "#3A2A1F"; }
+      return `
+      <div class="card p-4">
+        <div class="flex items-start justify-between gap-2 flex-wrap">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-display text-base" style="color:var(--gold);">${c.codigo}</span>
+              <span class="text-xs px-2 py-0.5 rounded-full" style="background:${statusBg}; color:${statusColor};">${statusLabel}</span>
+            </div>
+            <div class="text-xs mt-1" style="color:var(--muted);">
+              ${c.tipo==="percentual" ? `${c.valor}% de desconto` : `R$ ${Number(c.valor).toFixed(2)} de desconto`}
+              ${c.limiteUsos ? ` · ${c.usos||0}/${c.limiteUsos} usos` : ` · ${c.usos||0} uso(s)`}
+              ${c.validade ? ` · válido até ${new Date(c.validade).toLocaleDateString("pt-BR")}` : ""}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button data-action="cupom-toggle" data-id="${c.id}" class="btn-ghost">${c.ativo===false ? "Ativar" : "Desativar"}</button>
+            <button data-action="cupom-excluir" data-id="${c.id}"><i data-lucide="trash-2" style="width:16px;height:16px; color:var(--ember);"></i></button>
+          </div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+async function tplPedidos() {
+  const pedidos = (await fsList("pedidos")).sort((a, b) => b.timestamp - a.timestamp);
+  return `
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${pedidos.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhum pedido ainda.</div>` : ""}
+  <div class="space-y-2">
+    ${pedidos.map((p) => `
+      <div class="card p-4">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="font-semibold text-sm">${p.nick} · ${p.servidor}</div>
+            <div class="text-xs" style="color:var(--muted);">${new Date(p.timestamp).toLocaleString("pt-BR")}</div>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full" style="background:${p.status==="entregue"?"#1F3A28":"#3A2A1F"}; color:${p.status==="entregue"?"#4CAF6D":"var(--gold)"};">${p.status}</span>
+        </div>
+        <div class="text-xs mt-2" style="color:var(--muted);">${p.itens.map((i) => `<div>${i.qtd}x ${i.nome}</div>`).join("")}</div>
+        ${p.cupom ? `<div class="text-xs mt-1.5 flex items-center gap-1" style="color:var(--teal);"><i data-lucide="percent" style="width:12px;height:12px;"></i> Cupom ${p.cupom} · −R$ ${(p.desconto||0).toFixed(2)}</div>` : ""}
+        <div class="flex justify-between items-center mt-3">
+          <span class="font-semibold text-sm" style="color:var(--gold);">R$ ${p.total.toFixed(2)}</span>
+          <div class="flex gap-2">
+            <button data-action="pedido-toggle" data-id="${p.id}" data-status="${p.status}" class="btn-ghost">Marcar ${p.status==="entregue"?"pendente":"entregue"}</button>
+            <button data-action="pedido-excluir" data-id="${p.id}"><i data-lucide="trash-2" style="width:15px;height:15px; color:var(--ember);"></i></button>
+          </div>
+        </div>
+      </div>`).join("")}
+  </div>`;
+}
+
+async function tplAvisos() {
+  const avisos = (await fsGet("avisos", sanitize(state.servidor)))?.lista || [];
+  return `
+  <select id="avisoServidor" class="input mb-4" style="width:auto;">
+    ${SERVIDORES.map((s) => `<option value="${s}" ${s===state.servidor?"selected":""}>${s}</option>`).join("")}
+  </select>
+  <div class="flex gap-2 mb-4">
+    <input id="avisoNovo" class="input flex-1" placeholder="Novo aviso geral..." />
+    <button data-action="aviso-add" class="btn-ember">Publicar</button>
+  </div>
+  <div class="space-y-2">
+    ${avisos.map((a, i) => `
+      <div class="flex justify-between items-center p-3 rounded-md" style="background:var(--panel2);">
+        <span class="text-sm">${a.texto}</span>
+        <button data-action="aviso-rm" data-idx="${i}"><i data-lucide="trash-2" style="width:15px;height:15px; color:var(--ember);"></i></button>
+      </div>`).join("")}
+  </div>`;
+}
+
+async function tplPontuacao() {
+  const players = await fsList("cadastros");
+  const pontosArr = await Promise.all(players.map((p) => fsGet("pontos", sanitize(p.nickJogo))));
+  const pontos = {};
+  players.forEach((p, i) => { pontos[p.nickJogo] = pontosArr[i]?.valor || 0; });
+  window.__pontosCache = pontos;
+
+  return `
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${players.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhum jogador cadastrado.</div>` : ""}
+  <div class="space-y-2">
+    ${players.map((pl) => `
+      <div class="card p-3 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div class="text-sm font-semibold">${pl.nickJogo}</div>
+          <div class="text-xs" style="color:var(--muted);">${pl.tribo||"—"} · ${pl.cargo}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button data-action="pt-add" data-nick="${pl.nickJogo}" data-delta="-10" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="minus" style="width:13px;height:13px; color:var(--ember);"></i></button>
+          <span class="font-display text-sm w-10 text-center" style="color:var(--gold);">${pontos[pl.nickJogo]}</span>
+          <button data-action="pt-add" data-nick="${pl.nickJogo}" data-delta="10" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="plus" style="width:13px;height:13px; color:#4CAF6D;"></i></button>
+          <input id="ajuste-${sanitize(pl.nickJogo)}" type="number" placeholder="+/-" class="text-xs px-2 py-1.5 rounded-md" style="width:60px; background:var(--panel2); color:var(--text); border:1px solid var(--border);" />
+          <button data-action="pt-aplicar" data-nick="${pl.nickJogo}" class="btn-ghost">Aplicar</button>
+        </div>
+      </div>`).join("")}
+  </div>`;
+}
+
+async function tplCadastros() {
+  const players = await fsList("cadastros");
+  return `
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${players.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhum jogador cadastrado.</div>` : ""}
+  <div class="space-y-2">
+    ${players.map((p) => {
+      const online = p.lastSeen && Date.now() - p.lastSeen < 5*60*1000;
+      return `
+      <div class="card p-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center text-sm font-semibold"><span class="dot ${online?"on":""}"></span>${p.nickJogo}</div>
+          <span class="text-xs" style="color:var(--muted);">${p.servidor}</span>
+        </div>
+        <div class="text-xs mt-1 grid grid-cols-2 gap-x-3" style="color:var(--muted);">
+          <div>Nome: ${p.nome}</div><div>Tel: ${p.telefone}</div>
+          <div>Tribo: ${p.tribo||"—"}</div><div>Cargo: ${p.cargo}</div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+async function tplPalpites() {
+  const palpites = (await fsList("palpites")).sort((a, b) => b.timestamp - a.timestamp);
+  const resultado = await fsGet("config", "resultado");
+  return `
+  <div class="card p-4 mb-5">
+    <div class="text-xs mb-2" style="color:var(--muted);">Definir resultado oficial</div>
+    <div class="flex items-center gap-3">
+      <input id="resNoruega" type="number" class="input" placeholder="Noruega" value="${resultado?.noruega ?? ""}" />
+      <span style="color:var(--muted);">x</span>
+      <input id="resBrasil" type="number" class="input" placeholder="Brasil" value="${resultado?.brasil ?? ""}" />
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button data-action="resultado-salvar" class="btn-ember flex-1">Salvar resultado</button>
+      <button data-action="palpites-limpar" class="btn-ghost">Limpar tudo</button>
+    </div>
+  </div>
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  <div class="space-y-1">
+    ${palpites.map((p) => `
+      <div class="flex justify-between px-3 py-2 rounded-md" style="background:var(--panel2);">
+        <span class="text-sm">${p.nick}</span><span class="text-sm" style="color:var(--muted);">${p.noruega} x ${p.brasil}</span>
+      </div>`).join("")}
+  </div>`;
+}
+
+async function tplTribos() {
+  const tribos = (await fsList("tribos")).sort((a, b) => (b.pontos||0) - (a.pontos||0));
+  return `
+  <div class="card p-4 mb-5">
+    <div class="text-xs mb-2" style="color:var(--muted);">Criar nova tribo</div>
+    <div class="flex gap-2">
+      <input id="triboNovoNome" class="input flex-1" placeholder="Nome da tribo" />
+      <button data-action="tribo-criar" class="btn-ember">Criar</button>
+    </div>
+  </div>
+
+  <button data-action="admin-refresh" class="text-xs mb-3" style="color:var(--muted);">↻ Atualizar</button>
+  ${tribos.length===0 ? `<div class="text-sm" style="color:var(--muted);">Nenhuma tribo cadastrada ainda.</div>` : ""}
+
+  <div class="space-y-4">
+    ${tribos.map((t) => {
+      const tid = sanitize(t.nome);
+      const membros = t.membros || [];
+      return `
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-display text-lg" style="color:var(--gold);">${t.nome}</div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <button data-action="tribo-pontos" data-tribo="${t.nome}" data-delta="-10" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="minus" style="width:13px;height:13px; color:var(--ember);"></i></button>
+              <span class="font-display text-sm w-12 text-center" style="color:var(--gold);">${t.pontos||0} pts</span>
+              <button data-action="tribo-pontos" data-tribo="${t.nome}" data-delta="10" class="p-1.5 rounded-md" style="background:var(--panel2);"><i data-lucide="plus" style="width:13px;height:13px; color:#4CAF6D;"></i></button>
+            </div>
+            <button data-action="tribo-excluir" data-tribo="${t.nome}"><i data-lucide="trash-2" style="width:16px;height:16px; color:var(--ember);"></i></button>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-3">
+          <input id="ajusteTribo-${tid}" type="number" placeholder="+/- pontos" class="input" style="width:120px;" />
+          <button data-action="tribo-pontos-aplicar" data-tribo="${t.nome}" class="btn-ghost">Aplicar</button>
+        </div>
+
+        <div class="space-y-1 mb-3">
+          ${membros.length===0 ? `<div class="text-xs" style="color:var(--muted);">Nenhum membro ainda.</div>` : ""}
+          ${membros.map((m, idx) => `
+            <div class="flex items-center justify-between px-3 py-2 rounded-md" style="background:var(--panel2);">
+              <span class="text-sm flex items-center gap-2">
+                ${m.cargo==="Líder" ? `<i data-lucide="crown" style="width:13px;height:13px; color:var(--gold);"></i>` : ""}
+                ${m.nome}
+              </span>
+              <div class="flex items-center gap-2">
+                <button data-action="tribo-membro-cargo" data-tribo="${t.nome}" data-idx="${idx}" class="btn-ghost">
+                  ${m.cargo==="Líder" ? "Tornar membro" : "Tornar líder"}
+                </button>
+                <button data-action="tribo-membro-rm" data-tribo="${t.nome}" data-idx="${idx}"><i data-lucide="trash-2" style="width:14px;height:14px; color:var(--ember);"></i></button>
+              </div>
+            </div>`).join("")}
+        </div>
+
+        <div class="flex gap-2">
+          <input id="novoMembro-${tid}" class="input flex-1" placeholder="Nome / nick do jogador" />
+          <button data-action="tribo-membro-add" data-tribo="${t.nome}" class="btn-ember">Adicionar</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+/* ============================================================
+   ROTEAMENTO
+   ============================================================ */
+async function render() {
+  renderNav();
+  const app = document.getElementById("app");
+  if (state.view === "home") await renderHome();
+  else if (state.view === "loja") await renderLoja();
+  else if (state.view === "eventos") await renderEventos();
+  else if (state.view === "cadastro") await renderCadastro();
+  else if (state.view === "ranking") await renderRanking();
+  else if (state.view === "admin") state.isAdmin ? await renderAdmin() : renderAdminLogin();
+  icons();
+}
+
+/* ============================================================
+   AÇÕES (delegação de eventos)
+   ============================================================ */
+document.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const action = el.dataset.action;
+
+  if (action === "nav") { state.view = el.dataset.view; state.cartOpen = false; return render(); }
+  if (action === "cat") { state.categoria = el.dataset.cat; return renderLoja(); }
+
+  if (action === "add" || action === "inc") {
+    const itens = window.__itensCache || await getItens();
+    const item = itens.find((i) => i.id === el.dataset.id);
+    if (!item) return;
+    state.cart[item.id] = { ...item, qtd: (state.cart[item.id]?.qtd || 0) + 1 };
+    return renderLoja();
+  }
+  if (action === "dec") {
+    const cur = state.cart[el.dataset.id];
+    if (cur) { if (cur.qtd <= 1) delete state.cart[el.dataset.id]; else cur.qtd -= 1; }
+    return renderLoja();
+  }
+  if (action === "rm") { delete state.cart[el.dataset.id]; return renderLoja(); }
+  if (action === "opencart") { state.cartOpen = true; return renderLoja(); }
+  if (action === "closecart") { state.cartOpen = false; return renderLoja(); }
+
+  if (action === "cupom-aplicar") {
+    const codigoDigitado = document.getElementById("cupomInput").value.trim();
+    if (!codigoDigitado) return toast("Digite um código de cupom.");
+    const resultado = await validarCupom(codigoDigitado);
+    if (!resultado.ok) return toast(resultado.erro);
+    state.cupomAplicado = { id: resultado.cupom.id, codigo: resultado.cupom.codigo, tipo: resultado.cupom.tipo, valor: resultado.cupom.valor };
+    toast(`Cupom ${resultado.cupom.codigo} aplicado!`);
+    return renderLoja();
+  }
+  if (action === "cupom-remover") { state.cupomAplicado = null; return renderLoja(); }
+
+  if (action === "finalizar") {
+    const nickVal = (document.getElementById("nickInputCart")?.value || document.getElementById("nickInput")?.value || "").trim();
+    if (!nickVal) return toast("Digite seu nick antes de finalizar o pedido.");
+    const cartItems = Object.values(state.cart);
+    if (cartItems.length === 0) return toast("Seu carrinho está vazio.");
+    // Abre a aba já aqui, no clique direto do usuário, para o navegador não bloquear o pop-up.
+    const novaAba = window.open("", "_blank");
+    state.nick = nickVal;
+    const subtotal = cartItems.reduce((s, i) => s + i.preco * i.qtd, 0);
+    const desconto = calcularDesconto(subtotal, state.cupomAplicado);
+    const total = subtotal - desconto;
+    const pedido = {
+      nick: nickVal, servidor: state.servidor,
+      itens: cartItems.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: i.preco })),
+      subtotal, desconto, cupom: state.cupomAplicado?.codigo || null,
+      total, status: "pendente", timestamp: Date.now(),
+    };
+    await fsAdd("pedidos", pedido);
+    if (state.cupomAplicado) {
+      const cupomAtual = await fsGet("cupons", state.cupomAplicado.id);
+      if (cupomAtual) await fsSet("cupons", state.cupomAplicado.id, { ...cupomAtual, usos: (cupomAtual.usos || 0) + 1 });
+    }
+    const linhas = cartItems.map((i) => `• ${i.qtd}x ${i.nome} — R$${(i.preco*i.qtd).toFixed(2)}`).join("\n");
+    const linhaDesconto = desconto > 0 ? `\nCupom ${state.cupomAplicado.codigo}: −R$${desconto.toFixed(2)}` : "";
+    const texto = `*Novo pedido - Reinos do Dragão*\nServidor: ${state.servidor}\nJogador: ${nickVal}\n\n${linhas}${linhaDesconto}\n\n*Total: R$${total.toFixed(2)}*`;
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(texto)}`;
+    if (novaAba) novaAba.location.href = url; else window.open(url, "_blank");
+    state.cart = {}; state.cartOpen = false; state.cupomAplicado = null;
+    toast("Pedido enviado! Confira o WhatsApp para confirmar com o ADM.");
+    return renderLoja();
+  }
+
+  if (action === "palpite-enviar") {
+    const nickVal = document.getElementById("nickInputEv")?.value.trim();
+    const n = document.getElementById("golsNoruega").value;
+    const b = document.getElementById("golsBrasil").value;
+    if (!nickVal) return toast("Digite seu nick antes de palpitar.");
+    if (n === "" || b === "") return toast("Preencha os dois placares.");
+    state.nick = nickVal;
+    await fsSet("palpites", sanitize(nickVal), { nick: nickVal, noruega: Number(n), brasil: Number(b), timestamp: Date.now() });
+    toast("Palpite salvo!");
+    return renderEventos();
+  }
+
+  if (action === "cadastro-finalizar") {
+    const nome = document.getElementById("cNome").value.trim();
+    const telefone = document.getElementById("cTelefone").value.trim();
+    const nickVal = document.getElementById("cNick").value.trim();
+    const tribo = document.getElementById("cTribo").value.trim();
+    const cargo = document.getElementById("cCargo").value;
+    const servidor = document.getElementById("cServidor").value;
+    if (!nome || !telefone || !nickVal) return toast("Preencha nome, telefone e nick no jogo.");
+    // Abre a aba já aqui, no clique direto do usuário, para o navegador não bloquear o pop-up
+    // (se abrirmos só depois do await, alguns navegadores tratam como bloqueio de pop-up).
+    const novaAba = window.open("", "_blank");
+    state.nick = nickVal;
+    await fsSet("cadastros", sanitize(nickVal), { nome, telefone, nickJogo: nickVal, tribo, cargo, servidor, lastSeen: Date.now() });
+    const texto = `*Novo cadastro - Reinos do Dragão*\nNome: ${nome}\nNick no jogo: ${nickVal}\nTelefone: ${telefone}\nTribo: ${tribo || "-"}\nCargo: ${cargo}\nServidor: ${servidor}\n\nOlá! Acabei de me cadastrar no site e gostaria de receber meu kit de boas-vindas e o link do grupo. 🐉`;
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(texto)}`;
+    if (novaAba) novaAba.location.href = url; else window.open(url, "_blank");
+    toast("Cadastro salvo! Continue a conversa no WhatsApp.");
+    return renderCadastro();
+  }
+  if (action === "marcar-online") {
+    if (!state.nick) return;
+    const atual = await fsGet("cadastros", sanitize(state.nick));
+    await fsSet("cadastros", sanitize(state.nick), { ...(atual||{}), lastSeen: Date.now() });
+    toast("Você está marcado como online!");
+    return renderCadastro();
+  }
+
+  if (action === "admin-login") {
+    const pass = document.getElementById("adminPass").value;
+    const btn = el; const original = btn.textContent;
+    btn.textContent = "Verificando..."; btn.disabled = true;
+    const ok = await checkAdminPassword(pass);
+    btn.disabled = false; btn.textContent = original;
+    if (ok) { state.isAdmin = true; return render(); }
+    document.getElementById("adminErro").classList.remove("hidden");
+  }
+  if (action === "admin-logout") { state.isAdmin = false; state.view = "home"; return render(); }
+  if (action === "admin-tab") { state.adminTab = el.dataset.tab; return renderAdmin(); }
+  if (action === "admin-refresh") { return renderAdmin(); }
+
+  if (action === "pedido-toggle") {
+    const novoStatus = el.dataset.status === "entregue" ? "pendente" : "entregue";
+    const doc = (await fsList("pedidos")).find((p) => p.id === el.dataset.id);
+    if (doc) { const { id, ...data } = doc; await fsSet("pedidos", id, { ...data, status: novoStatus }); }
+    return renderAdmin();
+  }
+  if (action === "pedido-excluir") { await fsDelete("pedidos", el.dataset.id); toast("Pedido removido."); return renderAdmin(); }
+
+  if (action === "aviso-add") {
+    const servidor = document.getElementById("avisoServidor").value;
+    const texto = document.getElementById("avisoNovo").value.trim();
+    if (!texto) return;
+    state.servidor = servidor;
+    const atual = (await fsGet("avisos", sanitize(servidor)))?.lista || [];
+    await fsSet("avisos", sanitize(servidor), { lista: [...atual, { texto, data: Date.now() }] });
+    toast("Aviso publicado.");
+    return renderAdmin();
+  }
+  if (action === "aviso-rm") {
+    const servidor = document.getElementById("avisoServidor").value;
+    const atual = (await fsGet("avisos", sanitize(servidor)))?.lista || [];
+    atual.splice(Number(el.dataset.idx), 1);
+    await fsSet("avisos", sanitize(servidor), { lista: atual });
+    return renderAdmin();
+  }
+
+  if (action === "pt-add") {
+    const nick = el.dataset.nick;
+    const atual = window.__pontosCache?.[nick] || 0;
+    const novo = atual + Number(el.dataset.delta);
+    await fsSet("pontos", sanitize(nick), { valor: novo });
+    return renderAdmin();
+  }
+  if (action === "pt-aplicar") {
+    const nick = el.dataset.nick;
+    const val = Number(document.getElementById(`ajuste-${sanitize(nick)}`).value);
+    if (!val) return;
+    const atual = window.__pontosCache?.[nick] || 0;
+    await fsSet("pontos", sanitize(nick), { valor: atual + val });
+    toast("Pontuação atualizada.");
+    return renderAdmin();
+  }
+
+  if (action === "tribo-criar") {
+    const nome = document.getElementById("triboNovoNome").value.trim();
+    if (!nome) return;
+    const existente = await fsGet("tribos", sanitize(nome));
+    if (existente) { toast("Já existe uma tribo com esse nome."); return renderAdmin(); }
+    await fsSet("tribos", sanitize(nome), { nome, pontos: 0, membros: [] });
+    toast("Tribo criada!");
+    return renderAdmin();
+  }
+  if (action === "tribo-excluir") {
+    await fsDelete("tribos", sanitize(el.dataset.tribo));
+    toast("Tribo removida.");
+    return renderAdmin();
+  }
+  if (action === "tribo-pontos" || action === "tribo-pontos-aplicar") {
+    const nome = el.dataset.tribo;
+    const tid = sanitize(nome);
+    const tribo = await fsGet("tribos", tid);
+    if (!tribo) return;
+    let delta;
+    if (action === "tribo-pontos") {
+      delta = Number(el.dataset.delta);
+    } else {
+      delta = Number(document.getElementById(`ajusteTribo-${tid}`).value);
+      if (!delta) return;
+    }
+    await fsSet("tribos", tid, { ...tribo, pontos: (tribo.pontos||0) + delta });
+    if (action === "tribo-pontos-aplicar") toast("Pontuação da tribo atualizada.");
+    return renderAdmin();
+  }
+  if (action === "tribo-membro-add") {
+    const nome = el.dataset.tribo;
+    const tid = sanitize(nome);
+    const nomeMembro = document.getElementById(`novoMembro-${tid}`).value.trim();
+    if (!nomeMembro) return;
+    const tribo = await fsGet("tribos", tid);
+    if (!tribo) return;
+    const membros = [...(tribo.membros||[]), { nome: nomeMembro, cargo: "Membro" }];
+    await fsSet("tribos", tid, { ...tribo, membros });
+    toast("Membro adicionado.");
+    return renderAdmin();
+  }
+  if (action === "tribo-membro-rm") {
+    const tid = sanitize(el.dataset.tribo);
+    const tribo = await fsGet("tribos", tid);
+    if (!tribo) return;
+    const membros = (tribo.membros||[]).filter((_, i) => i !== Number(el.dataset.idx));
+    await fsSet("tribos", tid, { ...tribo, membros });
+    return renderAdmin();
+  }
+  if (action === "tribo-membro-cargo") {
+    const tid = sanitize(el.dataset.tribo);
+    const tribo = await fsGet("tribos", tid);
+    if (!tribo) return;
+    const membros = [...(tribo.membros||[])];
+    const idx = Number(el.dataset.idx);
+    membros[idx] = { ...membros[idx], cargo: membros[idx].cargo === "Líder" ? "Membro" : "Líder" };
+    await fsSet("tribos", tid, { ...tribo, membros });
+    return renderAdmin();
+  }
+
+  if (action === "cat-criar") {
+    const nome = document.getElementById("catNovaNome").value.trim();
+    if (!nome) return toast("Digite o nome da categoria.");
+    const id = sanitize(nome);
+    const existente = await fsGet("categorias", id);
+    if (existente) { toast("Já existe uma categoria com esse nome."); return renderAdmin(); }
+    const categorias = await getCategorias();
+    const maiorOrdem = categorias.reduce((m, c) => Math.max(m, c.ordem || 0), 0);
+    await fsSet("categorias", id, { nome, ordem: maiorOrdem + 1 });
+    toast("Categoria criada!");
+    return renderAdmin();
+  }
+  if (action === "cat-renomear") {
+    const id = el.dataset.id;
+    const nomeAntigo = el.dataset.nome;
+    const nomeNovo = document.getElementById(`catNome-${id}`).value.trim();
+    if (!nomeNovo) return toast("O nome não pode ficar em branco.");
+    if (nomeNovo === nomeAntigo) return;
+    const cat = await fsGet("categorias", id);
+    await fsSet("categorias", id, { ...cat, nome: nomeNovo });
+    const itens = await fsList("itens");
+    const afetados = itens.filter((i) => i.categoria === nomeAntigo);
+    for (const it of afetados) {
+      const { id: itemId, ...data } = it;
+      await fsSet("itens", itemId, { ...data, categoria: nomeNovo });
+    }
+    if (state.categoria === nomeAntigo) state.categoria = nomeNovo;
+    toast("Categoria renomeada.");
+    return renderAdmin();
+  }
+  if (action === "cat-excluir") {
+    const id = el.dataset.id;
+    const nome = el.dataset.nome;
+    const itens = await fsList("itens");
+    const afetados = itens.filter((i) => i.categoria === nome);
+    for (const it of afetados) await fsDelete("itens", it.id);
+    await fsDelete("categorias", id);
+    toast(afetados.length ? `Categoria e ${afetados.length} item(ns) removidos.` : "Categoria removida.");
+    return renderAdmin();
+  }
+  if (action === "item-criar") {
+    const cid = el.dataset.cid;
+    const categoria = el.dataset.categoria;
+    const nome = document.getElementById(`itNovoNome-${cid}`).value.trim();
+    const preco = Number(document.getElementById(`itNovoPreco-${cid}`).value);
+    const imagem = document.getElementById(`itNovoImg-${cid}`).value.trim();
+    const descricao = document.getElementById(`itNovoDesc-${cid}`).value.trim();
+    if (!nome || !preco || preco <= 0) return toast("Preencha nome e preço do item.");
+    await fsAdd("itens", { nome, preco, categoria, imagem: imagem || null, descricao: descricao || null });
+    toast("Item adicionado!");
+    return renderAdmin();
+  }
+  if (action === "item-salvar") {
+    const id = el.dataset.id;
+    const nome = document.getElementById(`itNome-${id}`).value.trim();
+    const preco = Number(document.getElementById(`itPreco-${id}`).value);
+    const categoria = document.getElementById(`itCat-${id}`).value;
+    const imagem = document.getElementById(`itImg-${id}`).value.trim();
+    const descricao = document.getElementById(`itDesc-${id}`).value.trim();
+    if (!nome || !preco || preco <= 0) return toast("Preencha nome e preço do item.");
+    await fsSet("itens", id, { nome, preco, categoria, imagem: imagem || null, descricao: descricao || null });
+    toast("Item atualizado.");
+    return renderAdmin();
+  }
+  if (action === "item-excluir") {
+    await fsDelete("itens", el.dataset.id);
+    toast("Item removido.");
+    return renderAdmin();
+  }
+
+  if (action === "cupom-criar") {
+    const codigo = document.getElementById("cupNovoCodigo").value.trim().toUpperCase();
+    const tipo = document.getElementById("cupNovoTipo").value;
+    const valor = Number(document.getElementById("cupNovoValor").value);
+    const limiteRaw = document.getElementById("cupNovoLimite").value;
+    const validadeRaw = document.getElementById("cupNovoValidade").value;
+    if (!codigo) return toast("Digite um código para o cupom.");
+    if (!valor || valor <= 0) return toast("Digite um valor de desconto válido.");
+    if (tipo === "percentual" && valor > 100) return toast("Desconto percentual não pode passar de 100%.");
+    const id = sanitize(codigo);
+    const existente = await fsGet("cupons", id);
+    if (existente) { toast("Já existe um cupom com esse código."); return renderAdmin(); }
+    await fsSet("cupons", id, {
+      codigo, tipo, valor,
+      limiteUsos: limiteRaw ? Number(limiteRaw) : null,
+      validade: validadeRaw ? new Date(validadeRaw + "T23:59:59").getTime() : null,
+      ativo: true, usos: 0, criadoEm: Date.now(),
+    });
+    toast("Cupom criado!");
+    return renderAdmin();
+  }
+  if (action === "cupom-toggle") {
+    const cupom = await fsGet("cupons", el.dataset.id);
+    if (!cupom) return;
+    await fsSet("cupons", el.dataset.id, { ...cupom, ativo: cupom.ativo === false ? true : false });
+    return renderAdmin();
+  }
+  if (action === "cupom-excluir") {
+    await fsDelete("cupons", el.dataset.id);
+    toast("Cupom removido.");
+    return renderAdmin();
+  }
+
+  if (action === "resultado-salvar") {
+    const n = document.getElementById("resNoruega").value;
+    const b = document.getElementById("resBrasil").value;
+    if (n === "" || b === "") return;
+    await fsSet("config", "resultado", { noruega: Number(n), brasil: Number(b) });
+    toast("Resultado oficial definido.");
+    return renderAdmin();
+  }
+  if (action === "palpites-limpar") {
+    const list = await fsList("palpites");
+    for (const p of list) await fsDelete("palpites", p.id);
+    await fsDelete("config", "resultado");
+    toast("Palpites e resultado limpos.");
+    return renderAdmin();
+  }
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "servidorSelect") { state.servidor = e.target.value; return renderLoja(); }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "adminPass") {
+    document.querySelector('[data-action="admin-login"]')?.click();
+  }
+});
+
+seedCatalogoSeNecessario().then(render);
+</script>
+</body>
+</html>
